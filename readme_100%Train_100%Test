@@ -1,0 +1,41 @@
+1) data
+  ------
+  Training Data ==> 1 Aug 2014 : 1 Aug 2018 
+  Testing Data  ==> 1 Aug 2014 : 1 Aug 2018 
+
+2) model
+  ------
+    window_len = 5
+    bt_epochs = 1500
+    bt_batch_size = 8
+    num_of_neurons_lv1 = 128
+    num_of_neurons_lv2 = 64
+    num_of_neurons_lv3 = 4
+    num_of_neurons_lv4 = 16
+    activ_func="tanh"
+    dropout=0.8
+    loss="categorical_crossentropy"
+    optimizer=Adam(lr=0.0003)
+	
+	==> feed-forward NN : it pridects price up or down for next day depending on last 5 days
+	
+3) features
+  ---------
+  basic features (9) : 'Close',  'close_off_high', 'volatility', 'day_diff','High','Low','Open','Volume','Market Cap'
+  indicators (17 generate 27) : 'MA_5','EMA_5','MOM_5','ROC_5','ATR_5','BollingerB1_5','BollingerB2_5',
+                           		'PP','R1','S1','R2','S2','R3','S3','SOK','SOK_5','SOD_5','Trix_5','ADX_5',
+                           		'MACD_10_5','MACDsign_10_5','MACDdiff_10_5','Mass_Index','Vortex_5','KST','RSI_5','TSI_10_5'
+								
+4) results
+  --------
+
+Training results (samples of training)
+
+upTrue(true pos):  703.0
+downTrue(true neg):  553.0
+upErr(false neg):  88.0
+downErr(false pos):  83.0
+
+up:  0.888748419722
+down:  0.869496855346
+Avg:  0.880168185004

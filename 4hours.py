@@ -1,9 +1,9 @@
 import io
+import random
+import string
 import urllib
 from datetime import datetime, timedelta
-
 import matplotlib
-
 matplotlib.use('Agg')
 
 import matplotlib.pyplot as plt
@@ -284,7 +284,130 @@ def TSI(df, r, s):
     TSI = pd.Series(EMA2 / aEMA2, name='bt_TSI_' + str(r) + '_' + str(s))
     df = df.join(TSI.fillna(0))
     return df
+def ICHIMOKU(df):
+    # Turning Line
+    period9_high = pd.Series(df['bt_High'][::-1].rolling(9).max())
+    period9_low = pd.Series(df['bt_Low'][::-1].rolling(9).min())
+    TL = pd.Series((period9_high + period9_low) / 2)[::-1]
 
+    # Standard Line
+    period26_high = df['bt_High'][::-1].rolling(window=26, center=False).max()
+    period26_low = df['bt_Low'][::-1].rolling(window=26, center=False).min()
+    SL = pd.Series((period26_high + period26_low) / 2)[::-1]
+
+    # Leading Span 1
+    ICHIMOKU_SPAN1 = pd.Series(((TL + SL) / 2).shift(26), name='bt_ICHIMOKU_SPAN1')[::-1]
+    df = df.join(ICHIMOKU_SPAN1.fillna(0))
+
+    # Leading Span 2
+    period52_high = df['bt_High'].rolling(window=52, center=False).max()
+    period52_low = df['bt_Low'].rolling(window=52, center=False).min()
+    ICHIMOKU_SPAN2 = pd.Series(((period52_high + period52_low) / 2).shift(26), name='bt_ICHIMOKU_SPAN2')[::-1]
+    df = df.join(ICHIMOKU_SPAN2.fillna(0))
+
+    # The most current closing price plotted 22 time periods behind (optional)
+    CHIKOU_SPAN = pd.Series(df['bt_Close'].shift(-22), name='bt_CHIKOU_SPAN')[::-1]
+    df = df.join(CHIKOU_SPAN.fillna(0))
+    return df
+
+
+def PSAR(df, iaf=0.02, maxaf=0.2):
+    length = len(df)
+    bt_PSAR = pd.Series(df['bt_Close'][0:len(df['bt_Close'])], name='bt_PSAR')[::-1]
+    psarbull = [None] * length
+    psarbear = [None] * length
+    bull = True
+    af = iaf
+    ep = df['bt_Low'][0]
+    hp = df['bt_High'][0]
+    lp = df['bt_Low'][0]
+    for i in range(2, length):
+        if bull:
+            bt_PSAR[i] = bt_PSAR[i - 1] + af * (hp - bt_PSAR[i - 1])
+        else:
+            bt_PSAR[i] = bt_PSAR[i - 1] + af * (lp - bt_PSAR[i - 1])
+        reverse = False
+        if bull:
+            if df['bt_Low'][i] < bt_PSAR[i]:
+                bull = False
+                reverse = True
+                bt_PSAR[i] = hp
+                lp = df['bt_Low'][i]
+                af = iaf
+        else:
+            if df['bt_High'][i] > bt_PSAR[i]:
+                bull = True
+                reverse = True
+                bt_PSAR[i] = lp
+                hp = df['bt_High'][i]
+                af = iaf
+        if not reverse:
+            if bull:
+                if df['bt_High'][i] > hp:
+                    hp = df['bt_High'][i]
+                    af = min(af + iaf, maxaf)
+                if df['bt_Low'][i - 1] < bt_PSAR[i]:
+                    bt_PSAR[i] = df['bt_Low'][i - 1]
+                if df['bt_Low'][i - 2] < bt_PSAR[i]:
+                    bt_PSAR[i] = df['bt_Low'][i - 2]
+            else:
+                if df['bt_Low'][i] < lp:
+                    lp = df['bt_Low'][i]
+                    af = min(af + iaf, maxaf)
+                if df['bt_High'][i - 1] > bt_PSAR[i]:
+                    bt_PSAR[i] = df['bt_High'][i - 1]
+                if df['bt_High'][i - 2] > bt_PSAR[i]:
+                    bt_PSAR[i] = df['bt_High'][i - 2]
+        if bull:
+            psarbull[i] = bt_PSAR[i]
+        else:
+            psarbear[i] = bt_PSAR[i]
+    df = df.join(bt_PSAR.fillna(0))
+    return df
+
+
+def fibonnaci_algo(df):
+    # select all the dataset
+    df_subclose = df.bt_Close
+    close_p = df_subclose.tolist()  # transform df to list
+    len_p = len(close_p)  # length of dataset
+    ema5 = pd.Series.ewm(df_subclose, span=5).mean().tolist()
+    ema20 = pd.Series.ewm(df_subclose, span=20).mean().tolist()
+    ret_level1 = [0, 0]
+    ret_level2 = [0, 0]
+    ret_level3 = [0, 0]
+    ext_level1 = [0, 0]
+    ext_level2 = [0, 0]
+    ext_level3 = [0, 0]
+    for i in range(2, len_p):
+        price_min = min(close_p[:i])
+        price_max = max(close_p[:i])
+        diff = price_max - price_min
+        if ema5[i] > ema20[i]:
+            # fibonnaci retracement and extensions for downward move
+            ret_level1.append(price_min + 0.236 * diff)
+            ret_level2.append(price_min + 0.382 * diff)
+            ret_level3.append(price_min + 0.618 * diff)
+            ext_level1.append(price_min - 0.236 * diff)
+            ext_level2.append(price_min - 0.382 * diff)
+            ext_level3.append(price_min - 0.618 * diff)
+        else:
+            # find minimum and max closing price before this point
+            # fibonnaci retracement and extensions for upward move
+            ret_level1.append(price_max - 0.236 * diff)
+            ret_level2.append(price_max - 0.382 * diff)
+            ret_level3.append(price_max - 0.618 * diff)
+            ext_level1.append(price_max + 0.236 * diff)
+            ext_level2.append(price_max + 0.382 * diff)
+            ext_level3.append(price_max + 0.618 * diff)
+
+    df = df.join(pd.Series(ret_level1, name='bt_ret_level1').fillna(0))
+    df = df.join(pd.Series(ret_level2, name='bt_ret_level2').fillna(0))
+    df = df.join(pd.Series(ret_level3, name='bt_ret_level3').fillna(0))
+    df = df.join(pd.Series(ext_level1, name='bt_ext_level1').fillna(0))
+    df = df.join(pd.Series(ext_level2, name='bt_ext_level2').fillna(0))
+    df = df.join(pd.Series(ext_level3, name='bt_ext_level3').fillna(0))
+    return df
 
 if __name__ == '__main__':
 
@@ -295,22 +418,22 @@ if __name__ == '__main__':
     # np.random.seed(202)
     model_path = "4h_bt_model.h5"
 
-    start_date = '20180101'
+    start_date = '20140101'
     # end_date=time.strftime("%Y%m%d")
     end_date = '20180801'
-    split_date = '2018-10-05'
+    split_date = '2018-10-01'
 
     # Our LSTM model will use previous data to predict the next day's closing price of bitcoin. 
     # We must decide how many previous days it will have access to
     window_len = 6
-    bt_epochs = 500
+    bt_epochs = 5000
     bt_batch_size = 8
     num_of_neurons_lv1 = 128
     num_of_neurons_lv2 = 64
     num_of_neurons_lv3 = 4
     num_of_neurons_lv4 = 16
     activ_func = "tanh"
-    dropout = 0.3
+    dropout = 0.9
     loss = "categorical_crossentropy"
     optimizer = Adam(lr=0.0003)
 
@@ -391,19 +514,11 @@ if __name__ == '__main__':
     bt_market_info = KST(bt_market_info)
     bt_market_info = RSI(bt_market_info, window_len)
     bt_market_info = TSI(bt_market_info, window_len * 2, window_len)
+    bt_market_info = ICHIMOKU(bt_market_info)
+    bt_market_info = PSAR(bt_market_info)
+    bt_market_info = fibonnaci_algo(bt_market_info)
 
     model_data = bt_market_info
-    # model_data = bt_market_info[['Date'] + [coin + metric for coin in ['bt_'] \
-    #                                         for metric in
-    #                                         ['Close', 'close_off_high', 'volatility', 'day_diff', 'High', 'Low', 'Open',
-    #                                          'Volume', \
-    #                                          'Market Cap', 'MA_5', 'EMA_5', 'MOM_5', 'ROC_5', 'ATR_5', 'BollingerB1_5',
-    #                                          'BollingerB2_5', \
-    #                                          'PP', 'R1', 'S1', 'R2', 'S2', 'R3', 'S3', 'SOK', 'SOK_5', 'SOD_5',
-    #                                          'Trix_5', 'ADX_5', \
-    #                                          'MACD_10_5', 'MACDsign_10_5', 'MACDdiff_10_5', 'Mass_Index', 'Vortex_5',
-    #                                          'KST' \
-    #                                             , 'RSI_5', 'TSI_10_5']]]
     # ,'Volume','Market Cap'
 
     # need to reverse the data frame so that subsequent rows represent later timepoints
@@ -419,8 +534,9 @@ if __name__ == '__main__':
     # we don't need the date columns anymore
     training_set = training_set.drop('Date', 1)
     test_set = test_set.drop('Date', 1)
+    print(model_data.columns.values)
 
-    norm_cols = [v for i, v in enumerate(model_data.columns) if v != 'Date']
+    norm_cols = [v for i, v in enumerate(model_data.columns) if v not in ['Date']]
 
     LSTM_training_inputs = ModelUtils.buildLstmInput(training_set, norm_cols, window_len)[30:]
     # model output is next price normalised to 10th previous closing price
@@ -471,7 +587,7 @@ if __name__ == '__main__':
 
     # bt_model.load_weights(model_path)
     # checkpoint
-    filepath = "4h_weights.hdf5"
+    filepath = ''.join(random.choices(string.ascii_uppercase + string.digits, k=10)) + ".hdf5"
     checkpoint = ModelCheckpoint(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max')
     callbacks_list = [checkpoint]
 
@@ -487,7 +603,7 @@ if __name__ == '__main__':
                               )
     print('weights:')
     # load weights
-    bt_model.load_weights("4h_weights.hdf5")
+    bt_model.load_weights(filepath)
     print(bt_model.get_weights())
     print('weights#')
     bt_model.save_weights(model_path)
